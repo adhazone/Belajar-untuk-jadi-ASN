@@ -131,7 +131,7 @@ function setTp(){const a=+$('#a').value,b=+$('#b').value,t=$('#tp').value.trim()
 async function saveSet(){const bs=[...new Set(pending.qs.map(q=>q.blk))],ts=bs.map(b=>pending.qs.find(q=>q.blk==b).t);
  if(bs.length>1&&new Set(ts).size<bs.length){for(let i=0;i<bs.length;i++)await putSet({id:pending.id+i,name:pending.name+' #'+(i+1),qs:pending.qs.filter(q=>q.blk==bs[i])})}else await putSet(pending);vHome()}
 async function start(){const ids=[...document.querySelectorAll('.ck:checked')].map(c=>+c.value);if(!ids.length){alert('Pilih minimal satu set.');return}
- const ss=(await allSets()).filter(s=>ids.includes(s.id));S={qs:ss.flatMap(s=>s.qs),ans:[],i:0,end:Date.now()+(+$('#tm').value||1)*60000};S.tm=setInterval(tick,1000);vTest()}
+ const ss=(await allSets()).filter(s=>ids.includes(s.id));S={qs:ss.flatMap(s=>s.qs.map((q,i)=>({...q,sid:s.id,qi:i}))),ans:[],i:0,end:Date.now()+(+$('#tm').value||1)*60000};S.tm=setInterval(tick,1000);vTest()}
 function tick(){const s=Math.max(0,Math.round((S.end-Date.now())/1000)),e=$('#tmr');if(e)e.textContent='⏱ '+String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');if(!s)fin(0)}
 const padBtn=q=>q.t=='TIU'?'<button onclick="openPad()">✎ Coret'+((S.sk&&S.sk[S.i]&&S.sk[S.i].length)?' •':'')+'</button>':'';
 function closePad(){const o=$('#pad');if(o){clearInterval(o.tk);o.remove()}document.body.style.overflow=''}
@@ -163,15 +163,31 @@ function gridT(){const g=$('#gd');if(g.style.display=='none'){g.style.display='b
 function pick(l){S.ans[S.i]=S.ans[S.i]==l?undefined:l;vTest()}
 function go(d){S.i=Math.min(S.qs.length-1,Math.max(0,S.i+d));vTest();scrollTo(0,0)}
 function fin(c){const un=S.qs.filter((_,i)=>!S.ans[i]).length;if(c&&!confirm('Selesaikan tes? '+un+' soal belum dijawab.'))return;clearInterval(S.tm);closePad();
- const rows=S.qs.map((q,i)=>{const a=S.ans[i];let p=0,m=5;if(q.t=='TKP'){if(!q.pts)m=0;else if(a)p=q.pts[a]||0}else if(!q.key)m=0;else if(a&&a==q.key)p=5;return{t:q.t,topic:q.topic||'umum',p,m,a,q}});
- const h=hist();h.push({d:Date.now(),rows:rows.map(r=>({t:r.t,k:r.topic,p:r.p,m:r.m}))});localStorage.setItem('hist',JSON.stringify(h));vRes(rows)}
-function vRes(rows){const T=agg(rows,r=>'T').T||{p:0,m:0},bad=rows.filter(r=>r.m&&r.p<r.m);
- H('<h2>Hasil</h2><div class="card" style="text-align:center"><div style="font-size:42px;font-weight:700">'+T.p+'</div><div class="mu">dari '+T.m+' poin</div></div><div class="card"><b>Per materi</b>'+Object.entries(agg(rows,r=>r.t)).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Per topik</b>'+Object.entries(agg(rows,r=>r.t+' · '+r.topic)).map(e=>bar(...e)).join('')+'</div><h3>Pembahasan ('+bad.length+' soal)</h3>'+
- bad.map(r=>{const q=r.q,kk=q.t=='TKP'?'poin tertinggi '+Object.entries(q.pts).sort((a,b)=>b[1]-a[1])[0][0]:'kunci '+q.key;
-  return'<details class="card"><summary>No. '+q.n+' ('+q.t+') · jawabanmu '+(r.a||'kosong')+(q.t=='TKP'&&r.a?' ('+r.p+' poin)':'')+' · '+kk+'</summary>'+qBody(q)+optList(q,1)+'<p><b>Pembahasan</b></p>'+expHtml(q)+'</details>'}).join('')+'<button class="p" onclick="vHome()">Selesai</button>')}
+ const rows=S.qs.map((q,i)=>grade(q,S.ans[i]));
+ const h=hist();h.push({d:Date.now(),rows:rows.map(r=>({t:r.t,k:r.topic,p:r.p,m:r.m})),det:S.qs.map((q,i)=>({s:q.sid,i:q.qi,a:S.ans[i]||null}))});localStorage.setItem('hist',JSON.stringify(h));vRes(rows)}
+const grade=(q,a)=>{let p=0,m=5;if(q.t=='TKP'){if(!q.pts)m=0;else if(a)p=q.pts[a]||0}else if(!q.key)m=0;else if(a&&a==q.key)p=5;return{t:q.t,topic:q.topic||'umum',p,m,a,q}};
+let ERR=[];
+const kunciTxt=q=>q.t=='TKP'&&q.pts?Object.entries(q.pts).sort((a,b)=>b[1]-a[1])[0][0]:q.key;
+function cpErr(){const t='Tolong rangkum materi apa saja yang perlu saya pelajari dari soal-soal yang saya jawab salah berikut. Kelompokkan per topik dan jelaskan singkat apa yang harus saya cari.\n\n'+ERR.map(r=>{const q=r.q;return'['+r.t+' · '+(r.topic=='umum'?'tanpa topik':r.topic)+'] No. '+q.n+'\n'+(q.img?'(soal bergambar/tabel)':q.txt+'\n'+q.opts.map((o,i)=>'ABCDE'[i]+'. '+o).join('\n'))+'\nJawaban saya: '+(r.a||'kosong')+(q.t=='TKP'?' ('+r.p+' poin)':'')+' | Kunci: '+kunciTxt(q)+(q.exp?'\nPembahasan: '+q.exp.slice(0,400):'')}).join('\n\n');
+ (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>alert('Tersalin. Tempel di chat Claude.')).catch(()=>prompt('Salin teks ini:',t))}
+function vRes(rows,back,ttl){const T=agg(rows,r=>'T').T||{p:0,m:0},ok=rows.filter(r=>r.m&&r.p==r.m),bad=rows.filter(r=>r.m&&r.p<r.m),nk=rows.filter(r=>!r.m).length;ERR=bad;
+ const nm=r=>r.t+' · '+(r.topic=='umum'?'(sub materi belum diisi)':r.topic),gr={},tot={};
+ bad.forEach(r=>{(gr[nm(r)]=gr[nm(r)]||[]).push(r)});rows.forEach(r=>{if(r.m){const k=nm(r);tot[k]=tot[k]||{p:0,m:0};tot[k].p+=r.p;tot[k].m+=r.m}});
+ const weak=Object.keys(gr).sort((a,b)=>tot[a].p/tot[a].m-tot[b].p/tot[b].m),sn=q=>q.img?'(soal bergambar/tabel, lihat pembahasannya di atas)':esc(q.txt.length>110?q.txt.slice(0,110)+'…':q.txt);
+ const item=r=>{const q=r.q;return'<details class="card it" open><summary>'+(r.p==r.m?'✓ ':'✗ ')+'No. '+q.n+' ('+q.t+') · jawabanmu '+(r.a||'kosong')+(q.t=='TKP'&&r.a?' ('+r.p+' poin)':'')+' · kunci '+kunciTxt(q)+'</summary>'+qBody(q)+optList(q,1)+'<p><b>Pembahasan</b></p>'+expHtml(q)+'</details>'};
+ H('<h2>Hasil</h2>'+(ttl?'<p class="mu">Riwayat: '+ttl+'</p>':'')+'<div class="card" style="text-align:center"><div style="font-size:42px;font-weight:700">'+T.p+'</div><div class="mu">dari '+T.m+' poin</div></div><div class="card"><b>Per materi</b>'+Object.entries(agg(rows,r=>r.t)).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Per topik</b>'+Object.entries(agg(rows,r=>r.t+' · '+r.topic)).map(e=>bar(...e)).join('')+'</div>'+
+ '<div class="row" style="margin:10px 0"><button onclick="document.getElementById(\'benar\').scrollIntoView()">Jawaban benar ('+ok.length+')</button><button onclick="document.getElementById(\'salah\').scrollIntoView()">Jawaban salah ('+bad.length+')</button><button onclick="document.querySelectorAll(\'details.it\').forEach(d=>d.open=!d.open)">Buka/tutup pembahasan</button></div>'+
+ '<h3 id="benar">Jawaban benar ('+ok.length+')</h3>'+(ok.length?ok.map(item).join(''):'<p class="mu">Belum ada.</p>')+
+ '<h3 id="salah">Jawaban salah ('+bad.length+')</h3>'+(bad.length?bad.map(item).join(''):'<p class="mu">Tidak ada.</p>')+
+ '<div class="card"><b>Rangkuman kesalahan: yang perlu kamu cari</b>'+(weak.length?weak.map(k=>bar(k,tot[k])+gr[k].map(r=>'<div class="mu" style="margin:2px 0 8px">No. '+r.q.n+': '+sn(r.q)+'</div>').join('')).join('')+'<button onclick="cpErr()">Salin untuk dirangkum Claude</button>':'<p class="mu">Tidak ada. Semua soal yang bisa dinilai sudah benar.</p>')+'</div>'+
+ (nk?'<p class="mu">'+nk+' soal tanpa kunci tidak ikut dinilai.</p>':'')+'<button class="p" onclick="'+(back||'vHome()')+'">'+(back?'Kembali':'Selesai')+'</button>')}
+async function vDetail(i){const x=hist()[i],ss=await allSets(),m={};ss.forEach(t=>m[t.id]=t);
+ const ds=x.det.filter(d=>m[d.s]&&m[d.s].qs[d.i]);if(!ds.length){alert('Soal untuk riwayat ini sudah dihapus dari daftar set, jadi detailnya tidak bisa ditampilkan.');return}
+ vRes(ds.map(d=>grade(m[d.s].qs[d.i],d.a)),'vRekap()',new Date(x.d).toLocaleString('id-ID')+(ds.length<x.det.length?' (sebagian soal sudah dihapus)':''))}
+
 function vRekap(){const h=hist(),rows=h.flatMap(x=>x.rows).map(r=>({t:r.t,topic:r.k,p:r.p,m:r.m})),tp=agg(rows,r=>r.t+' · '+r.topic),
  weak=Object.entries(tp).filter(e=>e[1].m).sort((a,b)=>a[1].p/a[1].m-b[1].p/b[1].m).slice(0,5);
- H('<h2>Rekap</h2>'+(h.length?'<div class="card"><b>Per materi ('+h.length+' try out)</b>'+Object.entries(agg(rows,r=>r.t)).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Perlu ditingkatkan</b>'+weak.map(e=>bar(...e)).join('')+'</div><div class="card"><b>Semua topik</b>'+Object.entries(tp).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Riwayat</b>'+h.slice().reverse().map(x=>'<div class="mu">'+new Date(x.d).toLocaleString('id-ID')+' — '+Object.entries(agg(x.rows.map(r=>({t:r.t,p:r.p,m:r.m})),r=>r.t)).map(([k,v])=>k+' '+v.p+'/'+v.m).join(' · ')+'</div>').join('')+'</div><button onclick="clr()">Hapus riwayat</button> ':'<p class="mu">Belum ada riwayat.</p>')+'<button onclick="vHome()">Kembali</button>')}
+ H('<h2>Rekap</h2>'+(h.length?'<div class="card"><b>Per materi ('+h.length+' try out)</b>'+Object.entries(agg(rows,r=>r.t)).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Perlu ditingkatkan</b>'+weak.map(e=>bar(...e)).join('')+'</div><div class="card"><b>Semua topik</b>'+Object.entries(tp).map(e=>bar(...e)).join('')+'</div><div class="card"><b>Riwayat</b>'+h.map((x,i)=>[x,i]).reverse().map(([x,i])=>'<div class="row" style="justify-content:space-between;margin:6px 0"><span class="mu">'+new Date(x.d).toLocaleString('id-ID')+' — '+Object.entries(agg(x.rows.map(r=>({t:r.t,p:r.p,m:r.m})),r=>r.t)).map(([k,v])=>k+' '+v.p+'/'+v.m).join(' · ')+'</span>'+(x.det?'<button onclick="vDetail('+i+')">Lihat</button>':'')+'</div>').join('')+'</div><button onclick="clr()">Hapus riwayat</button> ':'<p class="mu">Belum ada riwayat.</p>')+'<button onclick="vHome()">Kembali</button>')}
 function clr(){if(confirm('Hapus semua riwayat?')){localStorage.removeItem('hist');vRekap()}}
 vHome();
 </script></body></html>
