@@ -28,7 +28,8 @@ img.q{width:100%;background:#fff;border-radius:8px;border:1px solid var(--bd);ma
 .pw .o{background:#fff;color:#111;border-color:#ccc;padding:6px;margin:4px 0}.pw .lt{background:#eee;color:#111}
 .pw canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script></head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script></head>
 <body><div id="app"></div>
 <script>
 const $=s=>document.querySelector(s),app=$('#app'),H=h=>{app.innerHTML=h};
@@ -51,10 +52,23 @@ const cl=a=>{const rs=[];for(const i of a){const r=rs[rs.length-1];if(r&&Math.ab
   r.g=!/[A-Za-z]/.test(r.t.replace(/^\d{1,3}\s/,''))||(rest.length>1&&rest.some(i=>i.h<mh*.8))});return rs};
 const STY={dot:/^(\d{1,3})\.\s+\S/,par:/^(\d{1,3})\)\s*\S/,bpar:/^\((\d{1,3})\)\s*\S/,sp:/^(\d{1,3})\s+\S/},KT=/^(\d{1,3})[.)]?\s+([A-Ea-e])(?:\s+(\S+))?$/;
 const splitCols=(its,W)=>{const m=W/2,x=its.filter(i=>i.x<m-8&&i.x+i.w>m+8).length,L=its.filter(i=>i.x<m).length;return x<its.length*.08&&L>5&&its.length-L>5?[its.filter(i=>i.x<m),its.filter(i=>i.x>=m)]:[its]};
+/* ---------- OCR untuk halaman hasil scan ---------- */
+let OW,SCAN=0;
+async function ocrPage(pg){
+ if(!OW)OW=await Tesseract.createWorker('ind+eng');
+ SCAN=1;const Zo=2.5,v=pg.getViewport({scale:Zo}),c=document.createElement('canvas');
+ c.width=v.width;c.height=v.height;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,c.height);
+ await pg.render({canvasContext:g,viewport:v}).promise;
+ const {data}=await OW.recognize(c),o=[];
+ (data.lines||[]).forEach(l=>{const y=l.bbox.y1/Zo,h=(l.bbox.y1-l.bbox.y0)/Zo;
+  (l.words||[]).forEach(w=>{if(w.text.trim())o.push({s:w.text,x:w.bbox.x0/Zo,w:(w.bbox.x1-w.bbox.x0)/Zo,y,h})})});
+ return o.sort((a,b)=>a.y-b.y)}
 async function parsePdf(file,onP){
+ SCAN=0;
  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,Z=1.6,P=[],blocks=[];let nIt=0;
  for(let p=1;p<=pdf.numPages;p++){onP(p,pdf.numPages);const pg=await pdf.getPage(p),vp=pg.getViewport({scale:1}),tc=await pg.getTextContent();
-  const its=tc.items.filter(i=>i.str.trim()).map(i=>({s:i.str,x:i.transform[4],w:i.width,y:vp.height-i.transform[5],h:i.height||10})).sort((a,b)=>a.y-b.y).filter((i,k,a)=>!a.slice(0,k).some(j=>j.s==i.s&&Math.abs(j.x-i.x)<3&&Math.abs(j.y-i.y)<3));
+  let its=tc.items.filter(i=>i.str.trim()).map(i=>({s:i.str,x:i.transform[4],w:i.width,y:vp.height-i.transform[5],h:i.height||10})).sort((a,b)=>a.y-b.y).filter((i,k,a)=>!a.slice(0,k).some(j=>j.s==i.s&&Math.abs(j.x-i.x)<3&&Math.abs(j.y-i.y)<3));
+  if(!its.length){onP(p,pdf.numPages,1);its=await ocrPage(pg)}
   nIt+=its.length;P.push({W:vp.width,Hh:vp.height,its})}
  const sig={};P.forEach(g=>{g.sg=[];cl(g.its).forEach(r=>{if(r.y<g.Hh*.1||r.y>g.Hh*.88){const k=Math.round(r.y/g.Hh*60)+'|'+r.t.replace(/\d+/g,'#');g.sg.push([k,r.y]);sig[k]=(sig[k]||0)+1}})});
  const lim=Math.max(3,P.length*.4);
@@ -92,11 +106,13 @@ async function parsePdf(file,onP){
   await pg.render({canvasContext:cx,viewport:v2}).promise;
   for(const s of segs){const sx=Math.max(0,s.x0-8)*Z,w=Math.min(W,s.x1+8)*Z-sx,sy=Math.max(0,s.y0)*Z,h=(s.y1*Z)-sy;if(h<6||w<6)continue;
    const c=document.createElement('canvas');c.width=w;c.height=h;const g2=c.getContext('2d',{willReadFrequently:true});g2.fillStyle='#fff';g2.fillRect(0,0,w,h);g2.drawImage(cv,sx,sy,w,h,0,0,w,h);s.e.c.push(trim(c))}}
+ if(OW){await OW.terminate();OW=null}
  return{q:Q.out,k:K.out,nIt,kt:blocks}}
 function keyInfo(o){const L=o.t,T=L.join(' '),a=(T.match(/Jawab\s*an\s*:\s*([A-E])\b/i)||T.match(/Jawab\s*an\s*:?\s*([A-E])\b/i)||[])[1],pts={};
  L.forEach(l=>{const m=l.match(/^([A-E])\s+([1-5])$/),n=l.match(/^([1-5])\s+([A-E])$/);if(m)pts[m[1]]=+m[2];else if(n)pts[n[2]]=+n[1]});
  let tp='';const i=L.findIndex(l=>/^Topik\s*:/i.test(l));
  if(i>=0){tp=L[i].replace(/^Topik\s*:\s*/i,'');for(let j=i+1;j<L.length&&/^[a-z]/.test(L[j]);j++)tp+=' '+L[j];tp=tp.replace(/mengodinir/i,'mengoordinasi').trim().slice(0,80)}
+ for(let j=0;j+1<L.length;j++){if(L[j].length>24||L[j+1].length>24)continue;const h=(L[j].match(/[A-E]/g)||[]).join(''),v=L[j+1].match(/[1-5]/g);if(h=='ABCDE'&&v&&v.length==5)'ABCDE'.split('').forEach((l,k)=>pts[l]=+v[k])}
  return{a:a&&a.toUpperCase(),topic:tp,pts:Object.keys(pts).length>=4?pts:null}}
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const TN={TIU:'Tes Intelegensia Umum (TIU)',TWK:'Tes Wawasan Kebangsaan (TWK)',TKP:'Tes Karakteristik Pribadi (TKP)'};
@@ -121,19 +137,32 @@ async function vHome(){const ss=await allSets();
  H('<h2>Try Out CASN</h2><div class="card">'+(ss.length?ss.map(s=>'<label class="row"><input type="checkbox" class="ck" value="'+s.id+'" data-n="'+s.qs.length+'" style="width:auto"><span style="flex:1">'+s.name+' <span class="mu">'+s.qs.length+' soal · '+[...new Set(s.qs.map(q=>q.t))].join('+')+'</span></span><button type="button" onclick="del('+s.id+')">Hapus</button></label>').join(''):'<p class="mu">Belum ada soal. Impor PDF dulu.</p>')+'</div><div class="card">Waktu (menit)<input id="tm" type="number" value="100"><p class="mu">Otomatis menyesuaikan jumlah soal (110 soal = 100 menit), bisa kamu ubah.</p></div><div class="row"><button class="p" onclick="start()">Mulai tes</button><button onclick="vImport()">Impor soal</button><button onclick="vRekap()">Rekap</button></div><p class="mu">Soal tersimpan hanya di browser ini, tidak ada di GitHub.</p>');
  document.querySelectorAll('.ck').forEach(c=>c.onchange=()=>{const n=[...document.querySelectorAll('.ck:checked')].reduce((a,x)=>a+ +x.dataset.n,0);$('#tm').value=Math.max(1,Math.round(n*100/110))})}
 async function del(id){if(confirm('Hapus set ini?')){await delSet(id);vHome()}}
-function vImport(){H('<h2>Impor soal</h2><div class="card"><input id="nm" placeholder="Nama set, mis. Paket 2 TIU"><select id="ty"><option value="">Otomatis dari judul bagian</option><option>TIU</option><option>TWK</option><option>TKP</option></select><p class="mu">PDF soal + kunci (satu file)</p><input type="file" id="fs" accept="application/pdf"><button class="p" id="go">Proses</button><p id="st" class="mu"></p></div><button onclick="vHome()">Kembali</button>');
+function vImport(){H('<h2>Impor soal</h2><div class="card"><input id="nm" placeholder="Nama set, mis. Paket 2 TIU"><select id="ty"><option value="">Otomatis dari judul bagian</option><option>TIU</option><option>TWK</option><option>TKP</option></select><p class="mu">PDF soal + kunci (satu file). PDF hasil scan juga bisa (dibaca dengan OCR, lebih lambat).</p><input type="file" id="fs" accept="application/pdf"><button class="p" id="go">Proses</button><p id="st" class="mu"></p></div><button onclick="vHome()">Kembali</button>');
  $('#go').onclick=async()=>{const f=$('#fs').files[0],st=$('#st');if(!f){st.textContent='Pilih PDF dulu.';return}
-  try{const {q,k:key,nIt,kt}=await parsePdf(f,(p,n)=>st.textContent='Membaca halaman '+p+'/'+n+'...'),ty=$('#ty').value;
-   const ls=Object.values(q).sort((a,b)=>a.ord-b.ord),qB=[...new Set(ls.map(e=>e.blk))],kB=[...new Set(Object.values(key).sort((a,b)=>a.ord-b.ord).map(e=>e.blk))],qs=ls.map(e=>{const si=qB.indexOf(e.blk),ke=key[kB[si]+'|'+e.n],tk=(kt[si]||{})[e.n],i=ke?keyInfo(ke):{},x=qText(e.t),nd=e.g||x.opts.length<5||x.opts.some(o=>!o)||/\b(tabel|gambar|matriks|diagram|grafik|diputar|cermin)\b/i.test(x.stem);
+  try{const {q,k:key,nIt,kt}=await parsePdf(f,(p,n,o)=>st.textContent=(o?'OCR halaman ':'Membaca halaman ')+p+'/'+n+'...'),ty=$('#ty').value;
+   const ls=Object.values(q).sort((a,b)=>a.ord-b.ord),qB=[...new Set(ls.map(e=>e.blk))],kB=[...new Set(Object.values(key).sort((a,b)=>a.ord-b.ord).map(e=>e.blk))],qs=ls.map(e=>{const si=qB.indexOf(e.blk),ke=key[kB[si]+'|'+e.n],tk=(kt[si]||{})[e.n],i=ke?keyInfo(ke):{},x=qText(e.t),nd=SCAN||e.g||x.opts.length<5||x.opts.some(o=>!o)||/\b(tabel|gambar|matriks|diagram|grafik|diputar|cermin)\b/i.test(x.stem);
     return{n:e.n,blk:e.blk,t:e.sec!='X'?e.sec:(ty||'TIU'),txt:x.stem,opts:x.opts,img:nd?stitch(e.c):null,key:i.a||(tk&&tk.a),link:(tk&&tk.link)||'',pts:i.pts,topic:i.topic||'',exp:ke?expText(ke.t):'',expImg:ke?stitch(ke.c):null,eImg:!!(ke&&(ke.g||/[=≈×]/.test(ke.t.join(' '))))}});
-   if(!qs.length)throw new Error(nIt?'tidak ada nomor soal yang dikenali (pastikan nomor soal di kiri tiap soal, mis. "1." atau "1")':'PDF ini berupa gambar/scan sehingga tidak ada teks yang bisa dibaca');pending={id:Date.now(),name:$('#nm').value||f.name,qs};vReview()}catch(e){st.textContent='Gagal: '+e.message}}}
-function vReview(){const qs=pending.qs,miss=[];const bl=[...new Set(qs.map(q=>q.blk))];bl.forEach((b,i)=>{const ns=qs.filter(q=>q.blk==b),m=ns.map(q=>q.n);for(let j=1;j<=Math.max(...m);j++)if(!m.includes(j))miss.push(ns[0].t+(bl.length>1?' #'+(i+1):'')+' '+j)});
- const nk=qs.filter(q=>!q.key).map(q=>q.n),tk=qs.some(q=>q.t=='TKP'&&!q.pts);
- H('<h2>Cek hasil</h2><div class="card">'+qs.length+' soal terbaca ('+['TWK','TIU','TKP'].map(t=>t+' '+qs.filter(q=>q.t==t).length).join(', ')+').'+(miss.length?'<br>Nomor tidak terbaca: '+miss.join(', '):'')+(nk.length?'<br>Tanpa kunci: '+nk.join(', '):'')+(tk?'<br>Ada TKP tanpa tabel poin (nilainya 0).':'')+'</div><div class="card"><b>Isi topik massal</b><div class="row"><select id="bt" style="width:80px"><option>TIU</option><option>TWK</option><option>TKP</option></select><input id="a" type="number" placeholder="dari" style="width:70px"><input id="b" type="number" placeholder="sampai" style="width:80px"><input id="tp" placeholder="Topik, mis. Figural" style="flex:1"><button onclick="setTp()">Isi</button></div></div><div id="lst"></div><div class="row"><button class="p" onclick="saveSet()">Simpan</button><button onclick="vHome()">Batal</button></div>');lst()}
-function lst(){$('#lst').innerHTML=pending.qs.map((q,i)=>'<div class="card" onclick="pv('+i+')">No. '+q.n+' · '+q.t+' · '+(q.t=='TKP'?(q.pts?'poin '+Object.entries(q.pts).map(e=>e.join('=')).join(' '):'tanpa poin'):'kunci '+(q.key||'-'))+' · '+(q.img?'gambar':'teks')+' · '+(q.topic||'(tanpa topik)')+'<div id="pv'+i+'"></div></div>').join('')}
-function pv(i){const e=$('#pv'+i),q=pending.qs[i];e.innerHTML=e.innerHTML?'':qBody(q)+optList(q,1)+expHtml(q)}
+   if(!qs.length)throw new Error(nIt?'tidak ada nomor soal yang dikenali (pastikan nomor soal di kiri tiap soal, mis. "1." atau "1")':'PDF ini tidak bisa dibaca sama sekali (kosong atau terlalu buram)');pending={id:Date.now(),name:$('#nm').value||f.name,qs};vReview()}catch(e){st.textContent='Gagal: '+e.message}}}
+const ea=s=>esc(s).replace(/"/g,'&quot;');
+function hd(q){return'No. '+q.n+' · '+q.t+' · '+(q.t=='TKP'?(q.pts?'poin '+Object.entries(q.pts).map(e=>e.join('=')).join(' '):'tanpa poin'):'kunci '+(q.key||'-'))+' · '+(q.img?'gambar':'teks')+' · '+(q.topic||'(tanpa topik)')}
+function sum(){const qs=pending.qs,miss=[],bl=[...new Set(qs.map(q=>q.blk))];
+ bl.forEach((b,i)=>{const ns=qs.filter(q=>q.blk==b),m=ns.map(q=>q.n);for(let j=1;j<=Math.max(...m);j++)if(!m.includes(j))miss.push(ns[0].t+(bl.length>1?' #'+(i+1):'')+' '+j)});
+ const nk=qs.filter(q=>q.t!='TKP'&&!q.key).map(q=>q.n),tk=qs.filter(q=>q.t=='TKP'&&!q.pts).map(q=>q.n);
+ $('#sm').innerHTML=qs.length+' soal terbaca ('+['TWK','TIU','TKP'].map(t=>t+' '+qs.filter(q=>q.t==t).length).join(', ')+').'+(miss.length?'<br>Nomor tidak terbaca: '+miss.join(', ')+'<br><span class="mu">Kalau nomornya salah baca, ketuk soalnya lalu ubah nomornya. Soal yang memang hilang tidak bisa ditambah, abaikan saja.</span>':'')+(nk.length?'<br>Tanpa kunci: '+nk.join(', '):'')+(tk.length?'<br>TKP tanpa poin (nilai 0): '+tk.join(', '):'')+'<br><span class="mu">Ketuk satu soal untuk mengedit atau menghapusnya.</span>'}
+function vReview(){pending.open=new Set();
+ H('<h2>Cek hasil</h2><div class="card" id="sm"></div><div class="card"><b>Isi topik massal</b><div class="row"><select id="bt" style="width:80px"><option>TIU</option><option>TWK</option><option>TKP</option></select><input id="a" type="number" placeholder="dari" style="width:70px"><input id="b" type="number" placeholder="sampai" style="width:80px"><input id="tp" placeholder="Topik, mis. Figural" style="flex:1"><button onclick="setTp()">Isi</button></div></div><div id="lst"></div><div class="row"><button class="p" onclick="saveSet()">Simpan</button><button onclick="vHome()">Batal</button></div>');lst()}
+function lst(){sum();$('#lst').innerHTML=pending.qs.map((q,i)=>'<div class="card"><div id="h'+i+'" onclick="pv('+i+')" style="cursor:pointer">'+hd(q)+'</div><div id="pv'+i+'"></div></div>').join('');pending.open.forEach(fillPv)}
+function pv(i){const o=pending.open;if(o.has(i))o.delete(i);else o.add(i);lst()}
+function fillPv(i){const q=pending.qs[i],e=$('#pv'+i);if(!e)return;
+ e.innerHTML='<div class="card" style="background:var(--bg)"><div class="row"><label>No.<input type="number" value="'+q.n+'" style="width:80px" onchange="ed('+i+',\'n\',this.value)"></label><label>Materi<select onchange="ed('+i+',\'t\',this.value)">'+['TWK','TIU','TKP'].map(t=>'<option'+(t==q.t?' selected':'')+'>'+t+'</option>').join('')+'</select></label>'+(q.t=='TKP'?'':'<label>Kunci<select onchange="ed('+i+',\'key\',this.value)">'+['','A','B','C','D','E'].map(k=>'<option'+(k==(q.key||'')?' selected':'')+'>'+k+'</option>').join('')+'</select></label>')+'</div>'+
+ (q.t=='TKP'?'<div class="row">Poin: '+'ABCDE'.split('').map(l=>'<label>'+l+'<input type="number" min="1" max="5" value="'+((q.pts||{})[l]||'')+'" style="width:56px" onchange="edPt('+i+',\''+l+'\',this.value)"></label>').join('')+'</div>':'')+
+ '<label>Topik<input value="'+ea(q.topic||'')+'" onchange="ed('+i+',\'topic\',this.value)"></label><button onclick="delQ('+i+')">Hapus soal ini</button></div>'+qBody(q)+optList(q,1)+expHtml(q)}
+function ed(i,f,v){const q=pending.qs[i];if(f=='n')q.n=+v||0;else if(f=='key')q.key=v||'';else if(f=='t')q.t=v;else q[f]=v.trim();
+ if(f=='t'){lst();return}$('#h'+i).textContent=hd(q);sum()}
+function edPt(i,l,v){const q=pending.qs[i];q.pts=q.pts||{};if(v==='')delete q.pts[l];else q.pts[l]=Math.min(5,Math.max(1,+v||1));if(!Object.keys(q.pts).length)q.pts=null;$('#h'+i).textContent=hd(q);sum()}
+function delQ(i){if(confirm('Hapus soal ini dari hasil impor?')){pending.qs.splice(i,1);pending.open=new Set();lst()}}
 function setTp(){const a=+$('#a').value,b=+$('#b').value,t=$('#tp').value.trim();pending.qs.forEach(q=>{if(q.t==$('#bt').value&&q.n>=a&&q.n<=b)q.topic=t});lst()}
-async function saveSet(){const bs=[...new Set(pending.qs.map(q=>q.blk))],ts=bs.map(b=>pending.qs.find(q=>q.blk==b).t);
+async function saveSet(){delete pending.open;const bs=[...new Set(pending.qs.map(q=>q.blk))],ts=bs.map(b=>pending.qs.find(q=>q.blk==b).t);
  if(bs.length>1&&new Set(ts).size<bs.length){for(let i=0;i<bs.length;i++)await putSet({id:pending.id+i,name:pending.name+' #'+(i+1),qs:pending.qs.filter(q=>q.blk==bs[i])})}else await putSet(pending);vHome()}
 async function start(){const ids=[...document.querySelectorAll('.ck:checked')].map(c=>+c.value);if(!ids.length){alert('Pilih minimal satu set.');return}
  const ss=(await allSets()).filter(s=>ids.includes(s.id));S={qs:ss.flatMap(s=>s.qs.map((q,i)=>({...q,sid:s.id,qi:i}))),ans:[],i:0,end:Date.now()+(+$('#tm').value||1)*60000};S.tm=setInterval(tick,1000);vTest()}
