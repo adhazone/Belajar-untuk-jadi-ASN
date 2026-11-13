@@ -80,7 +80,7 @@ async function parsePdf(file,onP){
     const it=c.filter(i=>i.y>=b.y0&&i.y<b.y1);if(!it.length)continue;
     const ls=cl(it),x0=Math.min(...it.map(i=>i.x)),x1=Math.max(...it.map(i=>i.x+i.w)),top=Math.max(b.y0,Hh*.03),bot=b.y1,st=[];let own=M.cur;
     for(const l of ls){
-     const m=l.t.match(RE),n=m&&+m[1],rs=m&&n==1&&M.last>=5;
+     const m=/^[1-5]\s+[A-E]$/.test(l.t)?null:l.t.match(RE),n=m&&+m[1],rs=m&&n==1&&M.last>=5;
      if(m&&l.items[0].x<x0+45&&(rs||(M.last?(n>M.last&&n<=M.last+2):n<=2))){if(rs){M.blk++;M.bsec[M.blk]=M.sec}st.push({n,b:M.blk,top:l.top});own={b:M.blk,n};M.last=n}
      if(own){const e=ent(M,own.b,own.n);e.t.push(l.t);if(l.g)e.g=1}}
     const f=st.length?st[0].top:bot;
@@ -94,7 +94,7 @@ async function parsePdf(file,onP){
    const c=document.createElement('canvas');c.width=w;c.height=h;const g2=c.getContext('2d',{willReadFrequently:true});g2.fillStyle='#fff';g2.fillRect(0,0,w,h);g2.drawImage(cv,sx,sy,w,h,0,0,w,h);s.e.c.push(trim(c))}}
  return{q:Q.out,k:K.out,nIt,kt:blocks}}
 function keyInfo(o){const L=o.t,T=L.join(' '),a=(T.match(/Jawab\s*an\s*:\s*([A-E])\b/i)||T.match(/Jawab\s*an\s*:?\s*([A-E])\b/i)||[])[1],pts={};
- L.forEach(l=>{const m=l.match(/^([A-E])\s+([1-5])$/);if(m)pts[m[1]]=+m[2]});
+ L.forEach(l=>{const m=l.match(/^([A-E])\s+([1-5])$/),n=l.match(/^([1-5])\s+([A-E])$/);if(m)pts[m[1]]=+m[2];else if(n)pts[n[2]]=+n[1]});
  let tp='';const i=L.findIndex(l=>/^Topik\s*:/i.test(l));
  if(i>=0){tp=L[i].replace(/^Topik\s*:\s*/i,'');for(let j=i+1;j<L.length&&/^[a-z]/.test(L[j]);j++)tp+=' '+L[j];tp=tp.replace(/mengodinir/i,'mengoordinasi').trim().slice(0,80)}
  return{a:a&&a.toUpperCase(),topic:tp,pts:Object.keys(pts).length>=4?pts:null}}
@@ -110,7 +110,7 @@ function qText(L){L=L.slice();if(L.length)L[0]=L[0].replace(/^\(?\d{1,3}[.)]?\s+
  for(const l of L){const m=e<5&&l.match(new RegExp('^'+'ABCDE'[e]+'(?:[.)]\\s*|\\s+)(.*)$','i'));if(m){e++;opts.push(cur=[m[1]]);continue}cur.push(l)}
  return{stem:jn(stem),opts:opts.map(jn)}}
 function expText(L){const R=[];let sk=0;L.forEach((l,i)=>{if(/^Topik\s*:/i.test(l)){sk=1;return}if(sk&&/^[a-z]/.test(l))return;sk=0;
- l=l.replace(i?/^$/:/^\d{1,3}\.?\s+(Pembahasan\s*:?\s*)?/,'').replace(/▶?\s*Jawab\s*an\s*:?\s*[A-E]\.?/gi,'').trim();if(l&&!/^([A-E]\s+[1-5]|Pilihan Jawaban.*)$/.test(l))R.push(l)});return jn(R)}
+ l=l.replace(i?/^$/:/^\d{1,3}\.?\s+(Pembahasan\s*:?\s*)?/,'').replace(/▶?\s*Jawab\s*an\s*:?\s*[A-E]\.?/gi,'').trim();if(l&&!/^([A-E]\s+[1-5]|[1-5]\s+[A-E]|Poin\s+Opsi|Pilihan Jawaban.*)$/.test(l))R.push(l)});return jn(R)}
 const expHtml=q=>!q.exp&&!q.expImg&&/^https?:\/\//.test(q.link||'')?'<p><a href="'+esc(q.link)+'" target="_blank" rel="noopener">Buka pembahasan (video)</a></p>':q.eImg&&q.expImg?'<img class="q" src="'+q.expImg+'">':(q.exp?'<p style="white-space:pre-line">'+esc(q.exp)+'</p>':'')+(q.expImg?'<details><summary>Lihat versi gambar</summary><img class="q" src="'+q.expImg+'"></details>':'');
 const qBody=q=>q.img?'<img class="q" src="'+q.img+'">':'<p style="white-space:pre-line">'+esc(q.txt)+'</p>';
 const optList=(q,ro)=>q.img?(ro?'':'<div class="row" style="margin:10px 0">'+'ABCDE'.split('').map(l=>'<button class="opt '+(S.ans[S.i]==l?'s':'')+'" onclick="pick(\''+l+'\')">'+l+'</button>').join('')+'</div>'):'ABCDE'.split('').map((l,k)=>'<div class="o '+(!ro&&S.ans[S.i]==l?'s':'')+'"'+(ro?'':' onclick="pick(\''+l+'\')"')+'><b class="lt">'+l+'</b><span>'+esc(q.opts[k]||'')+'</span></div>').join('');
